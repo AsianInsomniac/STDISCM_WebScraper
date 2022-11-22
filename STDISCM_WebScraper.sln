@@ -1,0 +1,23 @@
+﻿
+Microsoft Visual Studio Solution File, Format Version 12.00
+# Visual Studio Version 17
+VisualStudioVersion = 17.3.32825.248
+MinimumVisualStudioVersion = 10.0.40219.1
+Project("{888888A0-9F3D-457C-B088-3A5042F75D52}") = "STDISCM_WebScraper", "STDISCM_WebScraper.pyproj", "{3F4A4903-0A2E-4595-BCF8-0F1E934CDB00}"
+EndProject
+Global
+	GlobalSection(SolutionConfigurationPlatforms) = preSolution
+		Debug|Any CPU = Debug|Any CPU
+		Release|Any CPU = Release|Any CPU
+	EndGlobalSection
+	GlobalSection(ProjectConfigurationPlatforms) = postSolution
+		{3F4A4903-0A2E-4595-BCF8-0F1E934CDB00}.Debug|Any CPU.ActiveCfg = Debug|Any CPU
+		{3F4A4903-0A2E-4595-BCF8-0F1E934CDB00}.Release|Any CPU.ActiveCfg = Release|Any CPU
+	EndGlobalSection
+	GlobalSection(SolutionProperties) = preSolution
+		HideSolutionNode = FALSE
+	EndGlobalSection
+	GlobalSection(ExtensibilityGlobals) = postSolution
+		SolutionGuid = {43BEE114-A4A8-4A7D-A0CE-4548555D20D7}
+	EndGlobalSection
+EndGlobal
