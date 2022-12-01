@@ -15,7 +15,7 @@ automatically find email addresses using parallel programming techniques.</p>
 ## Project Requirements
 
 - [] Create a Python email web scraper program that finds email addresses from the [DLSU Website](https://www.dlsu.edu.ph) in a specific amount of time
-	- [] Input Arguments (GUI/Command Line)
+	- [X] Input Arguments (GUI/Command Line)
 		- URL
 		- Scraping Time (in minutes)
 		- <em>Optional:</em> Number of threads/processes to be used

@@ -18,7 +18,16 @@ class file():
             txtFile.write("URL: " + url + "\nNumber of pages scraped: " + "\nNumber of email addresses found: ")
 
 if __name__=="__main__":
-    url = input("URL: ")
+    url = "https://www.dlsu.edu.ph"
+
+    while True:
+        urlInput = input("URL: ")
+
+        if(urlInput != url):
+            print("Only the DLSU website can be used for this project.\n")
+        else:
+            break
+    
     nTime = input("Scraping Time (minutes): ")
     
     # OPTIONAL: Number of threads/processes to be used
