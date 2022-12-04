@@ -47,7 +47,7 @@ class webScraper():
         global s
         s.acquire()
         
-        while event.is_set():
+        while not event.is_set():
             user_agent = 'Mozilla/5.0 (Windows; U; Windows NT 5.1; en-US; rv:1.9.0.7) Gecko/2009021910 Firefox/3.0.7'
             headers = {'User-Agent':user_agent,} 
             request = Request(url, None, headers)
@@ -83,6 +83,7 @@ class webScraper():
                 event.set()
             except HTTPError:
                 print(f"HTTP Timeout occurred on staffURL[{i}].")
+                break
 
         s.release()
         print(f"Done with staffURL[{i}] | {nPages} pages parsed.")
@@ -146,7 +147,10 @@ if __name__=="__main__":
 
             for i in range(len(staffURL)):
                 threads.append(multiprocessing.Process(target = webScraper.getData(emails, names, 'https://www.dlsu.edu.ph/staff-directory?personnel=' + staffURL[i], i)))
-                threads[i].start()
+            
+            threads[0].start()
+            threads[1].start()
+            threads[2].start()
 
             start_time = time.time()
             end_time = float(nTime) * 60.0
@@ -156,9 +160,6 @@ if __name__=="__main__":
                 if curr_time % 10.0 == 0:
                     print(curr_time)
         
-            print(f"{nTime} minutes have elapsed. Terminating all threads.")
-            for i in range(len(staffURL)):
-                threads[i].join()
 
             file.csvOutput(emails, names)
             file.txtOutput(url, nPages, len(emails))
