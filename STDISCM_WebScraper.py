@@ -7,17 +7,17 @@ import re
 import time
 
 class webScraper():
-    def loadPage(url, nTime):
+    def loadPage(url):
         options = webdriver.ChromeOptions()
         # Option to make browser window visible
         #options.add_argument('--headless')
 
         # Create a new Chrome session
         driver = webdriver.Chrome(options=options)
-        driver.implicitly_wait(60 * nTime)
+        driver.implicitly_wait(60)
         # Navigate to URL and wait for a few seconds before getting data
         driver.get(url)
-        time.sleep(20)
+        time.sleep(60)
 
         if driver.page_source != '':
             html = driver.page_source
@@ -110,19 +110,22 @@ if __name__=="__main__":
             else:
                 break
 
-    html = webScraper.loadPage(url, int(nTime))
+    start_time = time.time()
 
-    if html != '':
-        staffURL = webScraper.getStaffURL(html)
+    while int((time.time() - start_time) / 60) < int(nTime):
+        html = webScraper.loadPage(url)
 
-        for i in staffURL:
-            print(i)
+        if html != '':
+            staffURL = webScraper.getStaffURL(html)
 
-        # Critical Data
-        emails = []
-        names = []
-        nPages = 0
+            for i in staffURL:
+                print(i)
+
+            # Critical Data
+            emails = []
+            names = []
+            nPages = 0
         
-        # file.csvOutput(emails, names, url)
-    else:
-        print("Website timed out.")
+            # file.csvOutput(emails, names, url)
+        else:
+            print("Website timed out.")
