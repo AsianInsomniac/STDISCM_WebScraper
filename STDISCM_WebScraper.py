@@ -16,7 +16,7 @@ class webScraper():
 
         # Create a new Chrome session
         driver = webdriver.Chrome(options=options)
-        driver.implicitly_wait(60)
+        driver.implicitly_wait(30)
         # Navigate to URL and wait for a few seconds before getting data
         driver.get(url)
         time.sleep(30)
@@ -38,51 +38,49 @@ class webScraper():
 
         return staffURL
 
-    def getData(emails, names, url, nPages):
+    def getData(emails, names, url, i, nPages):
         print(f"Accessing staffURL[{nPages}]")
         s.acquire()
 
         user_agent = 'Mozilla/5.0 (Windows; U; Windows NT 5.1; en-US; rv:1.9.0.7) Gecko/2009021910 Firefox/3.0.7'
         headers = {'User-Agent':user_agent,} 
-
         request = Request(url, None, headers)
 
         try:
             content = urlopen(request).read()
             soup = BeautifulSoup(content, "html.parser")
-        except HTTPError:
-            print(f"HTTP Timeout occurred on staffURL[{nPages}].")
 
-        # Find email in <a href='mailto:'> link
-        for email in soup.find_all('a', attrs={"href": re.compile("^mailto:")}):
-            # Get href link
-            emailStr = email.get('href')
-            # Remove 'mailto:' prefix
-            emailStr = emailStr.replace('mailto:', '')
-            # Append email to array
-            emails.append(emailStr)
-            print(emailStr)
+            # Find email in <a href='mailto:'> link
+            for email in soup.find_all('a', attrs={"href": re.compile("^mailto:")}):
+                # Get href link
+                emailStr = email.get('href')
+                # Remove 'mailto:' prefix
+                emailStr = emailStr.replace('mailto:', '')
+                # Append email to array
+                emails.append(emailStr)
+                print(emailStr)
             
-            # Remove '@dlsu.edu.ph' suffix and remove '.' from staff emails
-            emailStr = emailStr.replace('@dlsu.edu.ph', '')
-            emailName = emailStr.split('.')
+                # Remove '@dlsu.edu.ph' suffix and remove '.' from staff emails
+                emailStr = emailStr.replace('@dlsu.edu.ph', '')
+                emailName = emailStr.split('.')
 
-            # Find all <h3> tags (This is where the name per staff page is located)
-            for name in soup.find_all('h3'):
-                # Case-insensitive substring validation (Check if part of email matches with found name)
-                if emailName[0].casefold() in name.text.casefold():
-                    # Append name to array
-                    names.append(name.text)
-                    print(name.text)
+                # Find all <h3> tags (This is where the name per staff page is located)
+                for name in soup.find_all('h3'):
+                    # Case-insensitive substring validation (Check if part of email matches with found name)
+                    if emailName[0].casefold() in name.text.casefold():
+                        # Append name to array
+                        names.append(name.text)
+                        print(name.text)
         
-        nPages += 1
+            nPages += 1
+        except HTTPError:
+            print(f"HTTP Timeout occurred on staffURL[{i}].")
 
         s.release()
-        print(f"Done with staffURL {nPages}")
+        print(f"Done with staffURL[{i}]")
 
 class file():
-    def csvOutput(emails, names, url):
-        emailCount = 0
+    def csvOutput(emails, names):
         header = ["Email", "Name"]
 
         with open("output.csv", "w", newline = '') as csvFile:
@@ -92,13 +90,10 @@ class file():
             for email, name in zip(emails, names):
                 print(email + ' | ' + name)
                 csvWriter.writerow({'Email': email, 'Name': name})
-                emailCount += 1
 
-        file.txtOutput(url, emailCount)
-
-    def txtOutput(url, emailCount):
+    def txtOutput(url, nPages, emailCount):
         with open("output.txt", "w") as txtFile:
-            txtFile.write("URL " + url + "\nNumber of pages scraped: " + "\nNumber of email addresses found: " + str(emailCount))
+            txtFile.write("URL " + url + "\nNumber of pages scraped: " + str(nPages) + "\nNumber of email addresses found: " + str(emailCount))
 
 if __name__=="__main__":
     url = "https://www.dlsu.edu.ph/staff-directory"
@@ -128,33 +123,37 @@ if __name__=="__main__":
 
     s = multiprocessing.Semaphore(int(nThread))
 
+    print("Loading Staff Directory Website.")
     html = webScraper.loadPage(url)
     if html != '':
+        print("Getting all Staff URL.")
         staffURL = webScraper.getStaffURL(html)
 
-        for i in staffURL:
-                print(i)
+        threads = []
+        emails = []
+        names = []
+        nPages = 0
+
+        for i in range(len(staffURL)):
+            threads.append(multiprocessing.Process(target = webScraper.getData(emails, names, 'https://www.dlsu.edu.ph/staff-directory?personnel=' + staffURL[i], i, nPages)))
+            threads[i].start()
+
+        for thread in threads:
+            thread.join()
 
         start_time = time.time()
-        while (((time.time() - start_time) / 60.0) < (float(nTime) * 60.0)):
-            threads = []
-            
-            # Critical Data
-            emails = []
-            names = []
-            nPages = 0
-
-            for i in range(len(staffURL)):
-                threads.append(multiprocessing.Process(target = webScraper.getData(emails, names, 'https://www.dlsu.edu.ph/staff-directory?personnel=' + staffURL[nPages], nPages)))
-                threads[i].start()
-
-            for i in range(len(staffURL)):
-                threads[i].join()
+        end_time = float(nTime) * 60.0
+        while ((time.time() - start_time) < end_time):
+            curr_time = time.time() - start_time
         
-        file.csvOutput(emails, names, url)   
+        print(f"{nTime} minutes have elapsed. Terminating all threads.")
+        for thread in threads:
+            thread.terminate()
 
-        end_time = time.time()
-        print(int((end_time - start_time) / 60))
+        file.csvOutput(emails, names)
+        file.txtOutput(url, nPages, len(emails))
+        print("output.csv and output.txt created.")
+
     else:
         print("Website timed out.")
         
