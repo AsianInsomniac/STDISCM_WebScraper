@@ -8,6 +8,9 @@ from urllib.request import Request
 from selenium import webdriver
 from bs4 import BeautifulSoup
 
+nPages = 0
+s = 0
+
 class webScraper():
     def loadPage(url):
         options = webdriver.ChromeOptions()
@@ -38,8 +41,8 @@ class webScraper():
 
         return staffURL
 
-    def getData(emails, names, url, i, nPages):
-        print(f"Accessing staffURL[{nPages}]")
+    def getData(emails, names, url, i):
+        print(f"Accessing staffURL[{i}]")
         s.acquire()
 
         user_agent = 'Mozilla/5.0 (Windows; U; Windows NT 5.1; en-US; rv:1.9.0.7) Gecko/2009021910 Firefox/3.0.7'
@@ -71,13 +74,14 @@ class webScraper():
                         # Append name to array
                         names.append(name.text)
                         print(name.text)
-        
-            nPages += 1
+
+            global nPages
+            nPages = nPages + 1
         except HTTPError:
             print(f"HTTP Timeout occurred on staffURL[{i}].")
 
         s.release()
-        print(f"Done with staffURL[{i}]")
+        print(f"Done with staffURL[{i}] | {nPages} pages parsed.")
 
 class file():
     def csvOutput(emails, names):
@@ -122,37 +126,41 @@ if __name__=="__main__":
                 break
 
     s = multiprocessing.Semaphore(int(nThread))
+    print(f"Number of Semaphores: {s}")
 
     print("Loading Staff Directory Website.")
     html = webScraper.loadPage(url)
+
     if html != '':
         print("Getting all Staff URL.")
         staffURL = webScraper.getStaffURL(html)
 
-        threads = []
-        emails = []
-        names = []
-        nPages = 0
+        if(len(staffURL) != 0):
+            threads = []
+            emails = []
+            names = []
 
-        for i in range(len(staffURL)):
-            threads.append(multiprocessing.Process(target = webScraper.getData(emails, names, 'https://www.dlsu.edu.ph/staff-directory?personnel=' + staffURL[i], i, nPages)))
-            threads[i].start()
+            for i in range(len(staffURL)):
+                threads.append(multiprocessing.Process(target = webScraper.getData(emails, names, 'https://www.dlsu.edu.ph/staff-directory?personnel=' + staffURL[i], i)))
+            
+            for thread in threads:
+                thread.start()
 
-        for thread in threads:
-            thread.join()
-
-        start_time = time.time()
-        end_time = float(nTime) * 60.0
-        while ((time.time() - start_time) < end_time):
-            curr_time = time.time() - start_time
+            start_time = time.time()
+            end_time = float(nTime) * 60.0
+            while ((time.time() - start_time) < end_time):
+                curr_time = time.time() - start_time
         
-        print(f"{nTime} minutes have elapsed. Terminating all threads.")
-        for thread in threads:
-            thread.terminate()
+            print(f"{nTime} minutes have elapsed. Terminating all threads.")
+            for thread in threads:
+                thread.terminate()
 
-        file.csvOutput(emails, names)
-        file.txtOutput(url, nPages, len(emails))
-        print("output.csv and output.txt created.")
+            file.csvOutput(emails, names)
+            file.txtOutput(url, nPages, len(emails))
+            print("output.csv and output.txt created.")
+
+        else:
+            print("Website timed out.")
 
     else:
         print("Website timed out.")
