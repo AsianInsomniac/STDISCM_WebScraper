@@ -9,7 +9,6 @@ from selenium import webdriver
 from bs4 import BeautifulSoup
 
 nPages = 0
-s = 0
 
 class webScraper():
     def loadPage(url):
@@ -43,42 +42,47 @@ class webScraper():
 
     def getData(emails, names, url, i):
         print(f"Accessing staffURL[{i}]")
+
+        event = multiprocessing.Event()
+        global s
         s.acquire()
+        
+        while event.is_set():
+            user_agent = 'Mozilla/5.0 (Windows; U; Windows NT 5.1; en-US; rv:1.9.0.7) Gecko/2009021910 Firefox/3.0.7'
+            headers = {'User-Agent':user_agent,} 
+            request = Request(url, None, headers)
 
-        user_agent = 'Mozilla/5.0 (Windows; U; Windows NT 5.1; en-US; rv:1.9.0.7) Gecko/2009021910 Firefox/3.0.7'
-        headers = {'User-Agent':user_agent,} 
-        request = Request(url, None, headers)
+            try:
+                content = urlopen(request).read()
+                soup = BeautifulSoup(content, "html.parser")
 
-        try:
-            content = urlopen(request).read()
-            soup = BeautifulSoup(content, "html.parser")
-
-            # Find email in <a href='mailto:'> link
-            for email in soup.find_all('a', attrs={"href": re.compile("^mailto:")}):
-                # Get href link
-                emailStr = email.get('href')
-                # Remove 'mailto:' prefix
-                emailStr = emailStr.replace('mailto:', '')
-                # Append email to array
-                emails.append(emailStr)
-                print(emailStr)
+                # Find email in <a href='mailto:'> link
+                for email in soup.find_all('a', attrs={"href": re.compile("^mailto:")}):
+                    # Get href link
+                    emailStr = email.get('href')
+                    # Remove 'mailto:' prefix
+                    emailStr = emailStr.replace('mailto:', '')
+                    # Append email to array
+                    emails.append(emailStr)
+                    print(emailStr)
             
-                # Remove '@dlsu.edu.ph' suffix and remove '.' from staff emails
-                emailStr = emailStr.replace('@dlsu.edu.ph', '')
-                emailName = emailStr.split('.')
+                    # Remove '@dlsu.edu.ph' suffix and remove '.' from staff emails
+                    emailStr = emailStr.replace('@dlsu.edu.ph', '')
+                    emailName = emailStr.split('.')
 
-                # Find all <h3> tags (This is where the name per staff page is located)
-                for name in soup.find_all('h3'):
-                    # Case-insensitive substring validation (Check if part of email matches with found name)
-                    if emailName[0].casefold() in name.text.casefold():
-                        # Append name to array
-                        names.append(name.text)
-                        print(name.text)
+                    # Find all <h3> tags (This is where the name per staff page is located)
+                    for name in soup.find_all('h3'):
+                        # Case-insensitive substring validation (Check if part of email matches with found name)
+                        if emailName[0].casefold() in name.text.casefold():
+                            # Append name to array
+                            names.append(name.text)
+                            print(name.text)
 
-            global nPages
-            nPages = nPages + 1
-        except HTTPError:
-            print(f"HTTP Timeout occurred on staffURL[{i}].")
+                global nPages
+                nPages = nPages + 1
+                event.set()
+            except HTTPError:
+                print(f"HTTP Timeout occurred on staffURL[{i}].")
 
         s.release()
         print(f"Done with staffURL[{i}] | {nPages} pages parsed.")
@@ -142,18 +146,19 @@ if __name__=="__main__":
 
             for i in range(len(staffURL)):
                 threads.append(multiprocessing.Process(target = webScraper.getData(emails, names, 'https://www.dlsu.edu.ph/staff-directory?personnel=' + staffURL[i], i)))
-            
-            for thread in threads:
-                thread.start()
+                threads[i].start()
 
             start_time = time.time()
             end_time = float(nTime) * 60.0
+
             while ((time.time() - start_time) < end_time):
                 curr_time = time.time() - start_time
+                if curr_time % 10.0 == 0:
+                    print(curr_time)
         
             print(f"{nTime} minutes have elapsed. Terminating all threads.")
-            for thread in threads:
-                thread.terminate()
+            for i in range(len(staffURL)):
+                threads[i].join()
 
             file.csvOutput(emails, names)
             file.txtOutput(url, nPages, len(emails))
