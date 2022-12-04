@@ -1,12 +1,13 @@
 import csv
-from struct import pack
+from urllib.error import HTTPError
+import requests
+import re
+import time
+import multiprocessing
 from urllib.request import urlopen
 from urllib.request import Request
 from selenium import webdriver
 from bs4 import BeautifulSoup
-import re
-import time
-import multiprocessing
 
 class webScraper():
     def loadPage(url):
@@ -39,15 +40,19 @@ class webScraper():
         return staffURL
 
     def getData(emails, names, url, nPages):
-        print(f"Accessing staffURL {nPages}")
+        print(f"Accessing staffURL[{nPages}]")
         s.acquire()
 
         user_agent = 'Mozilla/5.0 (Windows; U; Windows NT 5.1; en-US; rv:1.9.0.7) Gecko/2009021910 Firefox/3.0.7'
         headers = {'User-Agent':user_agent,} 
 
         request = Request(url, None, headers)
-        content = urlopen(request).read()
-        soup = BeautifulSoup(content, "html.parser")
+
+        try:
+            content = urlopen(request).read()
+            soup = BeautifulSoup(content, "html.parser")
+        except HTTPError:
+            print(f"HTTP Timeout occurred on staffURL[{nPages}].")
 
         # Find email in <a href='mailto:'> link
         for email in soup.find_all('a', attrs={"href": re.compile("^mailto:")}):
@@ -57,6 +62,7 @@ class webScraper():
             emailStr = emailStr.replace('mailto:', '')
             # Append email to array
             emails.append(emailStr)
+            print(emailStr)
             
             # Remove '@dlsu.edu.ph' suffix and remove '.' from staff emails
             emailStr = emailStr.replace('@dlsu.edu.ph', '')
@@ -68,6 +74,7 @@ class webScraper():
                 if emailName[0].casefold() in name.text.casefold():
                     # Append name to array
                     names.append(name.text)
+                    print(name.text)
         
         nPages += 1
 
@@ -77,7 +84,7 @@ class webScraper():
 class file():
     def csvOutput(emails, names, url):
         emailCount = 0
-        header = ["Email", "Name/Office/Department/Unit"]
+        header = ["Email", "Name"]
 
         with open("output.csv", "w", newline = '') as csvFile:
             csvWriter = csv.DictWriter(csvFile, fieldnames = header)
@@ -145,7 +152,7 @@ if __name__=="__main__":
             for i in range(len(staffURL)):
                 threads[i].join()
         
-        # file.csvOutput(emails, names, url)   
+        file.csvOutput(emails, names, url)   
 
         end_time = time.time()
         print(int((end_time - start_time) / 60))
