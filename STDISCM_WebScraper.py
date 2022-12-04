@@ -148,18 +148,8 @@ if __name__=="__main__":
             for i in range(len(staffURL)):
                 threads.append(multiprocessing.Process(target = webScraper.getData(emails, names, 'https://www.dlsu.edu.ph/staff-directory?personnel=' + staffURL[i], i)))
             
-            threads[0].start()
-            threads[1].start()
-            threads[2].start()
-
-            start_time = time.time()
-            end_time = float(nTime) * 60.0
-
-            while ((time.time() - start_time) < end_time):
-                curr_time = time.time() - start_time
-                if curr_time % 10.0 == 0:
-                    print(curr_time)
-        
+            for thread in threads:
+                thread.start()    
 
             file.csvOutput(emails, names)
             file.txtOutput(url, nPages, len(emails))
