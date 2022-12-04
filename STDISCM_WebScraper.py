@@ -1,11 +1,41 @@
 import csv
 from urllib.request import urlopen
 from urllib.request import Request
+from selenium import webdriver
 from bs4 import BeautifulSoup
-import pandas as pd
 import re
+import time
 
 class webScraper():
+    def loadPage(url, nTime):
+        options = webdriver.ChromeOptions()
+        # Option to make browser window visible
+        #options.add_argument('--headless')
+
+        # Create a new Chrome session
+        driver = webdriver.Chrome(options=options)
+        driver.implicitly_wait(60 * nTime)
+        # Navigate to URL and wait for a few seconds before getting data
+        driver.get(url)
+        time.sleep(20)
+
+        if driver.page_source != '':
+            html = driver.page_source
+
+        driver.quit()
+        
+        return html
+
+    def getStaffURL(html):
+        page_soup = BeautifulSoup(html, "html.parser")
+        staffs = page_soup.findAll("button", {"class": "dlsu-pvf-link-button btn btn-link"})
+        staffURL = []
+
+        for staff in staffs:
+            staffURL.append(staff.get('value'))
+
+        return staffURL
+
     def getData(url):
         user_agent = 'Mozilla/5.0 (Windows; U; Windows NT 5.1; en-US; rv:1.9.0.7) Gecko/2009021910 Firefox/3.0.7'
         headers = {'User-Agent':user_agent,} 
@@ -13,12 +43,8 @@ class webScraper():
         request = Request(url, None, headers)
         content = urlopen(request).read()
         soup = BeautifulSoup(content, "html.parser")
-        
-        emails = []
-        names = []
 
-        # Staff Directory Web Scraper
-        # Find emails that are in <a href='mailto:'> links
+        # Find email in <a href='mailto:'> link
         for email in soup.find_all('a', attrs={"href": re.compile("^mailto:")}):
             # Get href link
             emailStr = email.get('href')
@@ -36,9 +62,7 @@ class webScraper():
                 # Case-insensitive substring validation (Check if part of email matches with found name)
                 if emailName[0].casefold() in name.text.casefold():
                     # Append name to array
-                    names.append(name.text)
-
-        file.csvOutput(emails, names, url)
+                    names.append(name.text)   
 
 class file():
     def csvOutput(emails, names, url):
@@ -51,7 +75,7 @@ class file():
             
             for email, name in zip(emails, names):
                 print(email + ' | ' + name)
-                csvWriter.writerow({'Email': email, 'Name/Office/Department/Unit': name})
+                csvWriter.writerow({'Email': email, 'Name': name})
                 emailCount += 1
 
         file.txtOutput(url, emailCount)
@@ -61,15 +85,8 @@ class file():
             txtFile.write("URL " + url + "\nNumber of pages scraped: " + "\nNumber of email addresses found: " + str(emailCount))
 
 if __name__=="__main__":
-    url = "https://www.dlsu.edu.ph"
-
-    while True:
-        urlInput = input("URL (https): ")
-
-        if(url not in urlInput):
-            print("Only the DLSU website can be used for this project.")
-        else:
-            break
+    url = "https://www.dlsu.edu.ph/staff-directory"
+    print('URL: ' + url)
     
     while True:
         nTime = input("Scraping Time (minutes): ")
@@ -77,6 +94,35 @@ if __name__=="__main__":
         if(not nTime.isnumeric()):
             print("Only integer inputs are accepted.")
         else:
-            break
+            if(int(nTime) == 0):
+                print("Integer value must be greater than 0.")
+            else:
+                break
 
-    webScraper.getData(urlInput)
+    while True:
+        nThread = input("# of Threads/Processes: ")
+
+        if(not nThread.isnumeric()):
+            print("Only integer inputs are accepted.")
+        else:
+            if(int(nThread) == 0):
+                print("Integer value must be greater than 0.")
+            else:
+                break
+
+    html = webScraper.loadPage(url, int(nTime))
+
+    if html != '':
+        staffURL = webScraper.getStaffURL(html)
+
+        for i in staffURL:
+            print(i)
+
+        # Critical Data
+        emails = []
+        names = []
+        nPages = 0
+        
+        # file.csvOutput(emails, names, url)
+    else:
+        print("Website timed out.")
