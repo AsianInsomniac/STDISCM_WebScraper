@@ -1,6 +1,5 @@
 import csv
 from urllib.error import HTTPError
-import requests
 import re
 import time
 import multiprocessing
