@@ -1,10 +1,12 @@
 import csv
+from struct import pack
 from urllib.request import urlopen
 from urllib.request import Request
 from selenium import webdriver
 from bs4 import BeautifulSoup
 import re
 import time
+import multiprocessing
 
 class webScraper():
     def loadPage(url):
@@ -17,7 +19,7 @@ class webScraper():
         driver.implicitly_wait(60)
         # Navigate to URL and wait for a few seconds before getting data
         driver.get(url)
-        time.sleep(60)
+        time.sleep(30)
 
         if driver.page_source != '':
             html = driver.page_source
@@ -36,7 +38,10 @@ class webScraper():
 
         return staffURL
 
-    def getData(url):
+    def getData(emails, names, url, nPages):
+        print(f"Accessing staffURL {nPages}")
+        s.acquire()
+
         user_agent = 'Mozilla/5.0 (Windows; U; Windows NT 5.1; en-US; rv:1.9.0.7) Gecko/2009021910 Firefox/3.0.7'
         headers = {'User-Agent':user_agent,} 
 
@@ -62,7 +67,12 @@ class webScraper():
                 # Case-insensitive substring validation (Check if part of email matches with found name)
                 if emailName[0].casefold() in name.text.casefold():
                     # Append name to array
-                    names.append(name.text)   
+                    names.append(name.text)
+        
+        nPages += 1
+
+        s.release()
+        print(f"Done with staffURL {nPages}")
 
 class file():
     def csvOutput(emails, names, url):
@@ -110,22 +120,37 @@ if __name__=="__main__":
             else:
                 break
 
-    start_time = time.time()
+    s = multiprocessing.Semaphore(int(nThread))
 
-    while int((time.time() - start_time) / 60) < int(nTime):
-        html = webScraper.loadPage(url)
+    html = webScraper.loadPage(url)
+    if html != '':
+        staffURL = webScraper.getStaffURL(html)
 
-        if html != '':
-            staffURL = webScraper.getStaffURL(html)
-
-            for i in staffURL:
+        for i in staffURL:
                 print(i)
 
+        start_time = time.time()
+        while (((time.time() - start_time) / 60.0) < (float(nTime) * 60.0)):
+            threads = []
+            
             # Critical Data
             emails = []
             names = []
             nPages = 0
+
+            for i in range(len(staffURL)):
+                threads.append(multiprocessing.Process(target = webScraper.getData(emails, names, 'https://www.dlsu.edu.ph/staff-directory?personnel=' + staffURL[nPages], nPages)))
+                threads[i].start()
+
+            for i in range(len(staffURL)):
+                threads[i].join()
         
-            # file.csvOutput(emails, names, url)
-        else:
-            print("Website timed out.")
+        # file.csvOutput(emails, names, url)   
+
+        end_time = time.time()
+        print(int((end_time - start_time) / 60))
+    else:
+        print("Website timed out.")
+        
+    
+    
