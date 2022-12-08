@@ -1,165 +1,202 @@
 import csv
-from urllib.error import HTTPError
-import re
-import time
 import multiprocessing
-from urllib.request import urlopen
-from urllib.request import Request
-from selenium import webdriver
+import queue
+import pandas as pd
+import re
+import sys
+import time
+
 from bs4 import BeautifulSoup
+from selenium import webdriver
+from selenium.webdriver.support.ui import WebDriverWait
+from selenium.webdriver.support import expected_conditions as EC
+from selenium.webdriver.common.by import By
+from selenium.common.exceptions import TimeoutException
 
 nPages = 0
 
-class webScraper():
-    def loadPage(url):
-        options = webdriver.ChromeOptions()
-        # Option to make browser window visible
-        #options.add_argument('--headless')
+class webScraper(object):
+    def timer(event, nTime):
+        print("Timer started.", flush=True)
+        time.sleep(nTime * 60.0)
+        event.set()
+        print("Timer ended.", flush=True)
 
+    def producer(url, q, nTime):
+        html = webScraper.getData(url, nTime)
+        
+        if html != '':
+            # Prefixes to be removed from the URL
+            prefixes = ['https://www.dlsu.edu.ph', 'http://www.dlsu.edu.ph']
+            # Excluded links (Invalid, Duplicate with minor syntax difference, or leads outside of the DLSU domain)
+            exclude = ['#', 'javascript:;', 'javascript:void(0)', '/', 'www.dlsu.edu.ph', '/about-dlsu', '/colleges', '/students/international',
+                       'https://www.facebook.com/DLSU.Manila.100', 'https://twitter.com/dlsumanila', 'https://www.linkedin.com/school/de-la-salle-university/',
+                       'https://www.youtube.com/channel/UC7LXC9usdkDC0YEvWxa_kHQ', 'https://twitter.com/DLSUGradStudies', 'https://www.facebook.com/DLSU.GradStudies']
+            print("Getting all URLs.", flush=True)
+
+            page_soup = BeautifulSoup(html, "html.parser")
+            page_body = page_soup.find('body')
+            urlListRaw = page_body.find_all('a', href=True)
+            urlList = []
+
+            for url in urlListRaw:
+                if all(url.get('href') != x for x in exclude):
+                    urlRaw = url.get('href')
+
+                    for prefix in prefixes:
+                        if(prefix in urlRaw):
+                            urlRaw = urlRaw.replace(prefix, '')
+
+                    urlList.append(urlRaw)
+
+            urlList = pd.unique(urlList)
+
+            for url in urlList:
+                q.put(url)
+
+            print("Finished getting URLs.", flush=True)
+        else:
+            print("No URLs loaded.")
+
+    def consumer(q, nTime, event, emails):
+        print("Waiting to get URL from queue.", flush=True)
+
+        while not event.is_set():
+            try:
+                qURL = q.get(True, nTime * 60.0)
+            except TimeoutException:
+                print("Timeout.", flush=True)
+            except queue.Empty:
+                print("Queue is empty.", flush=True)
+            except None:
+                print("No data retrieved.")
+            else:
+                print("Process is now getting data from " + qURL, flush=True)
+
+                qLink = ''
+
+                if(qURL < 'https:'):
+                    qLink = 'https://www.dlsu.edu.ph'
+
+                qLink = qLink + qURL
+                html = webScraper.getData(qLink, nTime)
+                webScraper.getEmail(html, emails)
+
+                print('Successfully parsed data from ' + qURL, flush=True)
+        print("Event is set.", flush=True)
+
+    def getData(url, nTime):
+        html = ''
+        options = webdriver.ChromeOptions()
+        # Option to make browser window invisible
+        options.add_argument('--headless')
         # Create a new Chrome session
         driver = webdriver.Chrome(options=options)
-        driver.implicitly_wait(30)
-        # Navigate to URL and wait for a few seconds before getting data
-        driver.get(url)
-        time.sleep(30)
+        # Navigate to URL and wait for the page to fully load before getting data
+        print(f"Loading {url}.", flush=True)
 
-        if driver.page_source != '':
+        try:
+            driver.get(url)  
+            WebDriverWait(driver=driver, timeout=nTime * 60.0).until(EC.presence_of_all_elements_located((By.TAG_NAME, 'a')))
+        except TimeoutException:
+            print("Website timed out.", flush=True)
+        except:
+            print("An unknown error has occurred when loading the website.", flush=True)
+        else:
+            print("Website loaded.", flush=True)
             html = driver.page_source
+        finally:
+            driver.quit()
 
-        driver.quit()
-        
         return html
 
-    def getStaffURL(html):
-        page_soup = BeautifulSoup(html, "html.parser")
-        staffs = page_soup.findAll("button", {"class": "dlsu-pvf-link-button btn btn-link"})
-        staffURL = []
-
-        for staff in staffs:
-            staffURL.append(staff.get('value'))
-
-        return staffURL
-
-    def getData(emails, names, url, i):
-        print(f"Accessing staffURL[{i}]")
-
-        event = multiprocessing.Event()
-        global s
-        s.acquire()
-        
-        while not event.is_set():
-            user_agent = 'Mozilla/5.0 (Windows; U; Windows NT 5.1; en-US; rv:1.9.0.7) Gecko/2009021910 Firefox/3.0.7'
-            headers = {'User-Agent':user_agent,} 
-            request = Request(url, None, headers)
-
-            try:
-                content = urlopen(request).read()
-                soup = BeautifulSoup(content, "html.parser")
-
-                # Find email in <a href='mailto:'> link
-                for email in soup.find_all('a', attrs={"href": re.compile("^mailto:")}):
-                    # Get href link
-                    emailStr = email.get('href')
-                    # Remove 'mailto:' prefix
-                    emailStr = emailStr.replace('mailto:', '')
-                    # Append email to array
-                    emails.append(emailStr)
-                    print(emailStr)
+    def getEmail(html, emails):
+        if html != '':
+            page_soup = BeautifulSoup(html, "html.parser")
+            page_body = page_soup.find('body')
+            emailRaw = page_body.find_all('a', attrs={"href": re.compile("^mailto:")})
             
-                    # Remove '@dlsu.edu.ph' suffix and remove '.' from staff emails
-                    emailStr = emailStr.replace('@dlsu.edu.ph', '')
-                    emailName = emailStr.split('.')
+            for email in emailRaw:
+                emailStr = email.get('href')
+                emailStr = emailStr.replace('mailto:', '')
+                emails.append(emailStr)
+                print(emailStr, flush=True)
 
-                    # Find all <h3> tags (This is where the name per staff page is located)
-                    for name in soup.find_all('h3'):
-                        # Case-insensitive substring validation (Check if part of email matches with found name)
-                        if emailName[0].casefold() in name.text.casefold():
-                            # Append name to array
-                            names.append(name.text)
-                            print(name.text)
-
-                global nPages
-                nPages = nPages + 1
-                event.set()
-            except HTTPError:
-                print(f"HTTP Timeout occurred on staffURL[{i}].")
-                break
-
-        s.release()
-        print(f"Done with staffURL[{i}] | {nPages} pages parsed.")
+            global nPages
+            nPages = nPages + 1
 
 class file():
-    def csvOutput(emails, names):
-        header = ["Email", "Name"]
+    def csvOutput(emails):
+        header = ["Email"]
 
         with open("output.csv", "w", newline = '') as csvFile:
             csvWriter = csv.DictWriter(csvFile, fieldnames = header)
             csvWriter.writeheader()
             
-            for email, name in zip(emails, names):
-                print(email + ' | ' + name)
-                csvWriter.writerow({'Email': email, 'Name': name})
+            for email in emails:
+                print(email)
+                csvWriter.writerow({'Email': email})
 
     def txtOutput(url, nPages, emailCount):
         with open("output.txt", "w") as txtFile:
-            txtFile.write("URL " + url + "\nNumber of pages scraped: " + str(nPages) + "\nNumber of email addresses found: " + str(emailCount))
+            txtFile.write("URL: " + url + "\nNumber of pages scraped: " + str(nPages) + "\nNumber of email addresses found: " + str(emailCount))
 
-if __name__=="__main__":
-    url = "https://www.dlsu.edu.ph/staff-directory"
-    print('URL: ' + url)
+if __name__ == "__main__":
+    url = "https://www.dlsu.edu.ph"
+
+    while True:
+        urlInput = input("URL (https): ")
+
+        if(url not in urlInput):
+            print("Only websites under the DLSU domain can be used.")
+        else:
+            break
     
     while True:
-        nTime = input("Scraping Time (minutes): ")
+        nTime = float(input("Scraping Time (minutes): "))
 
-        if(not nTime.isnumeric()):
+        if(nTime <= 0.0):
+            print("Scraping time must be greater than 0.")
+        else:
+            break
+
+    while True:
+        nProcess = input("# of Processes: ")
+
+        if(not nProcess.isnumeric()):
             print("Only integer inputs are accepted.")
         else:
-            if(int(nTime) == 0):
+            if(int(nProcess) == 0):
                 print("Integer value must be greater than 0.")
             else:
                 break
 
-    while True:
-        nThread = input("# of Threads/Processes: ")
+    q = multiprocessing.Queue()
+    event = multiprocessing.Event()
+    processes = []
+    emails = []
 
-        if(not nThread.isnumeric()):
-            print("Only integer inputs are accepted.")
-        else:
-            if(int(nThread) == 0):
-                print("Integer value must be greater than 0.")
-            else:
-                break
-
-    s = multiprocessing.Semaphore(int(nThread))
-    print(f"Number of Semaphores: {s}")
-
-    print("Loading Staff Directory Website.")
-    html = webScraper.loadPage(url)
-
-    if html != '':
-        print("Getting all Staff URL.")
-        staffURL = webScraper.getStaffURL(html)
-
-        if(len(staffURL) != 0):
-            threads = []
-            emails = []
-            names = []
-
-            for i in range(len(staffURL)):
-                threads.append(multiprocessing.Process(target = webScraper.getData(emails, names, 'https://www.dlsu.edu.ph/staff-directory?personnel=' + staffURL[i], i)))
-            
-            for thread in threads:
-                thread.start()    
-
-            file.csvOutput(emails, names)
-            file.txtOutput(url, nPages, len(emails))
-            print("output.csv and output.txt created.")
-
-        else:
-            print("Website timed out.")
-
-    else:
-        print("Website timed out.")
-        
+    pProc = multiprocessing.Process(target=webScraper.producer, name='Producer', args=(urlInput, q, nTime, ))
+    pProc.start()
     
-    
+    for i in range(int(nProcess)):
+        processes.append(multiprocessing.Process(target=webScraper.consumer, name='Consumer ' + str(i), args=(q, nTime, event, emails, )))
+        processes[i].start()    
+
+    pProc.join()
+
+    webScraper.timer(event, nTime)    
+
+    for process in processes:
+        print("Joining process.", flush=True)
+        process.join()
+        if process.is_alive():
+            print("Terminating process.", flush=True)
+            process.terminate()
+        print(process.name + ' ended.')
+
+    file.csvOutput(emails)
+    file.txtOutput(urlInput, nPages, len(emails))
+    print("output.csv and output.txt generated.", flush=True)
+
+    sys.exit()
