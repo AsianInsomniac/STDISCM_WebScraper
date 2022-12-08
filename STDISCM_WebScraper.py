@@ -120,7 +120,6 @@ class webScraper(object):
                 emailStr = email.get('href')
                 emailStr = emailStr.replace('mailto:', '')
                 emails.append(emailStr)
-                print(emailStr, flush=True)
 
             global nPages
             nPages = nPages + 1
@@ -179,7 +178,8 @@ if __name__ == "__main__":
     pProc = multiprocessing.Process(target=webScraper.producer, name='Producer', args=(urlInput, q, nTime, ))
     pProc.start()
     
-    for i in range(int(nProcess)):
+    #for i in range(int(nProcess)):
+    for i in range(10):
         processes.append(multiprocessing.Process(target=webScraper.consumer, name='Consumer ' + str(i), args=(q, nTime, event, emails, )))
         processes[i].start()    
 
@@ -195,6 +195,9 @@ if __name__ == "__main__":
             process.terminate()
         print(process.name + ' ended.')
 
+    print(str(nPages) + ' pages scraped.')
+    for i in emails:
+        print(i)
     file.csvOutput(emails)
     file.txtOutput(urlInput, nPages, len(emails))
     print("output.csv and output.txt generated.", flush=True)
